@@ -1,0 +1,47 @@
+[app]
+log_level = "INFO"
+
+[cache]
+address = ["localhost:6379"]
+username        = ""
+password        = ""
+client_name     = ""
+commit_interval = "10s"
+
+[provider.backup]
+type = "nomad"
+# tags will be values that need to be present to be evaluated
+# will be accessible in the templates as a key-value pair.
+# can be empty if no tags are required to be parsed.
+# NOTE: the nomad job requires a meta tag with `damon-enabled`
+# set to `true` for the specified tags to be parsed.
+tags = ["backup-cron", "backup-db-service", "backup-variables"]
+# templates to use for the provider
+job_template = "templates/postgresql-backup/job.hcl"
+acl_template = "templates/postgresql-backup/acl.hcl"
+# namespace to use as a filter for the events.
+# will default to '*' if undefined
+namespace = "*"
+# if the job should be deregistered when the JobDeregistered event
+# is triggered. Defaults to false.
+deregister_job = true
+
+# [provider.script]
+# type = "shell"
+# tags = []
+# topics are defined as Topic:filter. For example, if the topic is set to Job
+# and the filter is set to *, the operator will filter for all job types.
+# To filter for specific jobs, the filter needs to be set to the job name.
+# Eg. "Job": ["web", "redis"]
+# topics = {
+  # "Job": ["*"]
+# }
+# event_types = ["JobRegistered", "JobDeregistered"]
+# namespace = "*"
+
+# [provider.dns]
+# type = "dns"
+# namespace = "*"
+# tags need to be added to the service block.
+# tags = []
+# listen_addr = ":5353"
