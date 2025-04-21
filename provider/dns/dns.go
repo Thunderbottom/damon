@@ -159,22 +159,19 @@ func (d *DNS) OnEvent(event *api.Event) {
 func (d *DNS) handleServiceEvent(event *api.Event) {
 	srv, err := event.Service()
 	if err != nil {
-		d.logger.Error("error occurred while fetching service from event",
-			"error", err,
-			"provider", d.Name())
+		d.logger.Error("error occurred while fetching service from event", "error", err)
 		return
 	}
 	if srv == nil {
-		d.logger.Debug("service not found, skipping", "provider", d.Name())
+		d.logger.Debug("service not found, skipping")
 		return
 	}
 
 	// Skip if service doesn't have required tags (if configured)
 	if len(d.config.Tags) > 0 && !hasRequiredTags(srv.Tags, d.config.Tags) {
-		d.logger.Debug("service missing required tags, skipping",
+		d.logger.Debug("service missing required tags, attempting to deregister",
 			"service", srv.ServiceName,
-			"tags", srv.Tags,
-			"provider", d.Name())
+			"tags", srv.Tags)
 		d.deregisterService(srv)
 		return
 	}
