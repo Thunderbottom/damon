@@ -68,14 +68,17 @@ type jobsAPIAdapter struct {
 	jobs *api.Jobs
 }
 
+// List retrieves a list of jobs from the Nomad API
 func (a *jobsAPIAdapter) List(q *api.QueryOptions) ([]*api.JobListStub, *api.QueryMeta, error) {
 	return a.jobs.List(q)
 }
 
+// Register registers a job with the Nomad API
 func (a *jobsAPIAdapter) Register(job *api.Job, q *api.WriteOptions) (*api.JobRegisterResponse, *api.WriteMeta, error) {
 	return a.jobs.Register(job, q)
 }
 
+// Deregister removes a job from the Nomad API
 func (a *jobsAPIAdapter) Deregister(jobID string, purge bool, q *api.WriteOptions) (string, *api.WriteMeta, error) {
 	return a.jobs.Deregister(jobID, purge, q)
 }
@@ -84,6 +87,7 @@ type eventStreamAPIAdapter struct {
 	es *api.EventStream
 }
 
+// Stream sets up a Nomad event stream
 func (a *eventStreamAPIAdapter) Stream(ctx context.Context, topics map[api.Topic][]string, index uint64, q *api.QueryOptions) (<-chan *api.Events, error) {
 	return a.es.Stream(ctx, topics, index, q)
 }
@@ -92,6 +96,7 @@ type aclPoliciesAPIAdapter struct {
 	acl *api.ACLPolicies
 }
 
+// Upsert creates or updates an ACL policy
 func (a *aclPoliciesAPIAdapter) Upsert(policy *api.ACLPolicy, q *api.WriteOptions) (*api.ACLPolicy, error) {
 	_, err := a.acl.Upsert(policy, q)
 	if err != nil {
@@ -100,6 +105,7 @@ func (a *aclPoliciesAPIAdapter) Upsert(policy *api.ACLPolicy, q *api.WriteOption
 	return policy, nil
 }
 
+// Delete removes an ACL policy
 func (a *aclPoliciesAPIAdapter) Delete(policyName string, q *api.WriteOptions) error {
 	_, err := a.acl.Delete(policyName, q)
 	return err
@@ -109,10 +115,12 @@ type servicesAPIAdapter struct {
 	services *api.Services
 }
 
+// List retrieves a list of services from Nomad
 func (a *servicesAPIAdapter) List(q *api.QueryOptions) ([]*api.ServiceRegistrationListStub, *api.QueryMeta, error) {
 	return a.services.List(q)
 }
 
+// Get retrieves details for a specific service
 func (a *servicesAPIAdapter) Get(serviceID string, q *api.QueryOptions) ([]*api.ServiceRegistration, *api.QueryMeta, error) {
 	return a.services.Get(serviceID, q)
 }

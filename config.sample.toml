@@ -1,47 +1,108 @@
+# Damon Configuration Sample
+# This file demonstrates available configuration options
+
+# ------------------------------------------------------------------------------
+# Application Settings
+# ------------------------------------------------------------------------------
 [app]
+# Log level - can be DEBUG, INFO, WARN, or ERROR
 log_level = "INFO"
 
+# ------------------------------------------------------------------------------
+# Cache Configuration
+# ------------------------------------------------------------------------------
 [cache]
+# Address for the Valkey/Redis cache
+# Can be a single host or multiple hosts for high availability
 address = ["localhost:6379"]
-username        = ""
-password        = ""
-client_name     = ""
+
+# Authentication credentials (if needed)
+username = ""
+password = ""
+
+# Name for the cache client
+client_name = "damon"
+
+# How often to commit event indices to the cache (prevents event reprocessing on restart)
 commit_interval = "10s"
 
+# ------------------------------------------------------------------------------
+# Plugin Configuration
+# ------------------------------------------------------------------------------
+[plugins]
+# Directory to load plugins from
+# Each .so file in this directory will be loaded as a plugin
+directory = "plugins"
+
+# ------------------------------------------------------------------------------
+# Provider Configurations
+# ------------------------------------------------------------------------------
+# Multiple providers of the same type can be configured with different names
+# Each provider is defined in its own section with a unique name:
+# [provider.<unique-name>]
+
+# ------------------------------------------------------------------------------
+# DNS Provider Configuration
+# ------------------------------------------------------------------------------
+[provider.dns]
+# Type must be "dns" for the DNS provider
+type = "dns"
+
+# Namespace to filter events from (use "*" for all namespaces)
+namespace = "*"
+
+# Tags to filter services by (only services with ALL these tags will be registered)
+# Leave empty to register all services
+tags = []
+
+# Address for the DNS server to listen on
+listen_addr = ":5353"
+
+# TTL for DNS records in seconds
+ttl = 30
+
+# ------------------------------------------------------------------------------
+# Nomad Provider Configuration
+# ------------------------------------------------------------------------------
 [provider.backup]
+# Type must be "nomad" for the Nomad provider
 type = "nomad"
-# tags will be values that need to be present to be evaluated
-# will be accessible in the templates as a key-value pair.
-# can be empty if no tags are required to be parsed.
-# NOTE: the nomad job requires a meta tag with `damon-enabled`
-# set to `true` for the specified tags to be parsed.
-tags = ["backup-cron", "backup-db-service", "backup-variables"]
-# templates to use for the provider
+
+# Tags required in the job meta block
+# These tags will be accessible in the templates as key-value pairs
+# Can be empty if no tags are required
+tags = ["backup-cron", "backup-service", "backup-vars"]
+
+# Templates to use for job and ACL creation
 job_template = "templates/postgresql-backup/job.hcl"
 acl_template = "templates/postgresql-backup/acl.hcl"
-# namespace to use as a filter for the events.
-# will default to '*' if undefined
+
+# Namespace to filter events from (use "*" for all namespaces)
 namespace = "*"
-# if the job should be deregistered when the JobDeregistered event
-# is triggered. Defaults to false.
+
+# Whether to deregister jobs when the source job is deregistered
 deregister_job = true
 
-# [provider.script]
-# type = "shell"
-# tags = []
-# topics are defined as Topic:filter. For example, if the topic is set to Job
-# and the filter is set to *, the operator will filter for all job types.
-# To filter for specific jobs, the filter needs to be set to the job name.
-# Eg. "Job": ["web", "redis"]
-# topics = {
-  # "Job": ["*"]
-# }
-# event_types = ["JobRegistered", "JobDeregistered"]
-# namespace = "*"
+# Whether to include the full job payload in template data
+add_payload = true
 
-# [provider.dns]
-# type = "dns"
-# namespace = "*"
-# tags need to be added to the service block.
-# tags = []
-# listen_addr = ":5353"
+# ------------------------------------------------------------------------------
+# Multiple Provider Instances Example
+# ------------------------------------------------------------------------------
+# You can define multiple providers of the same type with different configurations
+
+# Example: Another DNS provider for internal services
+[provider.internal_dns]
+type = "dns"
+namespace = "default"
+tags = ["internal"]
+listen_addr = ":5354"
+
+# Example: A provider specifically for Redis backup jobs
+[provider.redis_backup]
+type = "nomad"
+tags = ["redis-backup-cron", "redis-backup-service"]
+job_template = "templates/redis-backup/job.hcl"
+acl_template = "templates/redis-backup/acl.hcl"
+namespace = "default"
+deregister_job = true

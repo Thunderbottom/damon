@@ -15,10 +15,12 @@ func NewValkeyClientAdapter(client valkey.Client) CacheClient {
 	return &ValkeyClientAdapter{client: client}
 }
 
+// Close closes the underlying Valkey client connection
 func (a *ValkeyClientAdapter) Close() {
 	a.client.Close()
 }
 
+// Do executes a Valkey command
 func (a *ValkeyClientAdapter) Do(ctx context.Context, cmd any) any {
 	if completed, ok := cmd.(valkey.Completed); ok {
 		return a.client.Do(ctx, completed)
@@ -26,6 +28,7 @@ func (a *ValkeyClientAdapter) Do(ctx context.Context, cmd any) any {
 	return nil
 }
 
+// RawClient returns the underlying Valkey client
 func (a *ValkeyClientAdapter) RawClient() valkey.Client {
 	return a.client
 }

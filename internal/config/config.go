@@ -63,6 +63,7 @@ func Load() (*Config, error) {
 	return validateConfig(ko)
 }
 
+// applyDefaults sets default values for configuration options
 func applyDefaults(ko *koanf.Koanf) {
 	for key, value := range defaultValues {
 		if strings.Contains(key, "*") {
@@ -79,6 +80,7 @@ func applyDefaults(ko *koanf.Koanf) {
 	}
 }
 
+// validateConfig checks if the configuration is valid
 func validateConfig(ko *koanf.Koanf) (*Config, error) {
 	applyDefaults(ko)
 
