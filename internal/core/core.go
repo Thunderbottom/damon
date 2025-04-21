@@ -18,14 +18,15 @@ import (
 
 // Core represents the main application engine
 type Core struct {
-	logger       *slog.Logger
-	client       interfaces.NomadClient
-	config       *config.Config
-	streamMgr    interfaces.StreamManager
-	cache        interfaces.CacheClient
-	rawCache     valkey.Client
-	doneOnce     sync.Once
-	commitTicker *time.Ticker
+	cache                interfaces.CacheClient
+	client               interfaces.NomadClient
+	commitTicker         *time.Ticker
+	config               *config.Config
+	doneOnce             sync.Once
+	lastCommittedIndices map[string]uint64
+	logger               *slog.Logger
+	rawCache             valkey.Client
+	streamMgr            interfaces.StreamManager
 }
 
 // nomadClientAdapter adapts api.Client to interfaces.NomadClient
@@ -241,15 +242,25 @@ func (c *Core) startCommitTicker(ctx context.Context, interval time.Duration) {
 // commitIndices commits provider indices to the cache
 func (c *Core) commitIndices(ctx context.Context) {
 	indices := c.streamMgr.GetProviderIndices()
+
 	for provider, idx := range indices {
+		// Skip if index hasn't changed since last commit
+		if lastIdx, exists := c.lastCommittedIndices[provider]; exists && lastIdx == idx {
+			c.logger.Debug("skipping commit, no index changes detected")
+			continue
+		}
+
+		// Index has changed, commit it
 		err := c.rawCache.Do(ctx, c.rawCache.B().
 			Hset().Key("provider:"+provider).FieldValue().
 			FieldValue("event-index", fmt.Sprint(idx)).
 			Build()).Error()
+
 		if err != nil {
 			c.logger.Error("failed to commit index", "provider", provider, "error", err)
 		} else {
 			c.logger.Debug("committed index", "provider", provider, "index", idx)
+			c.lastCommittedIndices[provider] = idx
 		}
 	}
 }
