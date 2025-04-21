@@ -1,22 +1,3 @@
-FROM golang:1.21-alpine AS builder
-
-# Set up build directory
-WORKDIR /build
-
-# Install build dependencies
-RUN apk add --no-cache git make
-
-# Copy go module files first for better layer caching
-COPY go.mod go.sum ./
-RUN go mod download
-
-# Copy the rest of the source code
-COPY . .
-
-# Build the application
-RUN CGO_ENABLED=0 make build
-
-# Create the final small image
 FROM alpine:3.18
 
 # Add certificates and timezone data
@@ -33,10 +14,9 @@ RUN mkdir -p /app/templates && \
 # Set working directory
 WORKDIR /app
 
-# Copy binary from builder stage
-COPY --from=builder /build/damon /app/
-COPY --from=builder /build/templates /app/templates/
-COPY --from=builder /build/config.sample.toml /app/config.toml
+# Copy binary and sample configuration
+COPY damon /app/
+COPY config.sample.toml /app/config.toml
 
 # Switch to non-root user
 USER damon
