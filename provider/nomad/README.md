@@ -1,24 +1,26 @@
 # Nomad Provider
 
-The Nomad provider watches for job-related events in Nomad and can create secondary jobs based on the primary job's metadata. This is useful for automating operational tasks like backups, monitoring, or creating auxiliary services for your main applications.
+The Nomad provider watches for job-related events in Nomad and creates secondary jobs based on the primary job's metadata. This is perfect for automating operational tasks like backups, monitoring, or creating auxiliary services for your main applications.
 
 ## Features
 
 - **Event-Driven Job Creation**: Automatically create secondary jobs when primary jobs are registered
-- **Template-Based**: Uses HCL templates to define secondary jobs
+- **Template-Based**: Uses HCL templates to define secondary jobs 
 - **ACL Integration**: Automatically creates appropriate ACL policies for secondary jobs
 - **Metadata Filtering**: Filter jobs based on metadata tags
 - **Cleanup Support**: Automatically deregister secondary jobs when primary jobs are removed
+- **Full Job Context**: Option to include the entire job payload in template data
 
 ## How It Works
 
-The Nomad provider works by:
+The Nomad provider operates by:
 
 1. Listening for `JobRegistered` and `JobDeregistered` events
-2. Filtering jobs based on specified metadata tags
-3. When a matching job is registered, rendering job and ACL templates using the job's metadata
-4. Registering the resulting job and ACL policy with Nomad
-5. Optionally cleaning up the secondary job when the primary job is deregistered
+2. Checking if jobs have the `damon-enable = "true"` meta tag
+3. Filtering jobs based on specified metadata tags
+4. Rendering job and ACL templates using the job's metadata
+5. Registering the resulting job and ACL policy with Nomad
+6. Cleaning up the secondary job when the primary job is deregistered (if enabled)
 
 ## Configuration
 
@@ -62,6 +64,18 @@ namespace = "default"
 deregister_job = true
 ```
 
+## Configuration Options
+
+| Option | Description | Default | Required |
+|--------|-------------|---------|----------|
+| `type` | Must be "nomad" | | Yes |
+| `tags` | Tags required in the job meta block | `[]` | No |
+| `job_template` | Path to job template file | | Yes |
+| `acl_template` | Path to ACL policy template file | | Yes |
+| `namespace` | Namespace to monitor for jobs | `*` | No |
+| `deregister_job` | Remove secondary jobs when primary is removed | `false` | No |
+| `add_payload` | Include full job payload in template data | `false` | No |
+
 ## Usage
 
 ### Primary Job Configuration
@@ -80,9 +94,9 @@ job "postgres" {
 
   meta {
     damon-enable = "true"
-    pg-backup-cron = "0 0 * * *"  # Daily backup at midnight
-    pg-backup-service = "postgres-db"
-    pg-backup-vars = "nomad/jobs/postgres"  # Reference to this job's own variables
+    backup-cron = "0 0 * * *"  # Daily backup at midnight
+    backup-service = "postgres-db"
+    backup-vars = "postgres-backup-vars"  # Reference to Nomad variables
   }
 
   group "db" {
@@ -124,9 +138,9 @@ job "postgres" {
 }
 ```
 
-### Job Template
+### Template System
 
-Your job template should use the `[[` and `]]` delimiters for template variables. Available template variables include:
+The Nomad provider uses a template system with the `[[` and `]]` delimiters. Available template variables include:
 
 - `.JobID`: The ID of the secondary job (automatically prefixed with "damon-")
 - `.Namespace`: The namespace of the primary job
@@ -134,145 +148,9 @@ Your job template should use the `[[` and `]]` delimiters for template variables
 - `.Tags`: Map of all tags defined in the primary job's meta block
 - `.Payload`: Full job payload if `add_payload = true` is set
 
-Here's a simplified backup job template example:
+#### Job Template Example
 
-```hcl
-job "[[ .JobID ]]" {
-  datacenters = [ [[range $idx, $dc := .Datacenters]][[if $idx]], [[end]]"[[$dc]]"[[end]] ]
-  namespace = "[[ .Namespace ]]"
-  type = "batch"
-
-  periodic {
-    cron = "[[ index .Tags "pg-backup-cron" ]]"
-    prohibit_overlap = true
-  }
-
-  group "backup" {
-    count = 1
-
-    task "backup" {
-      driver = "docker"
-
-      config {
-        image = "postgres:14"
-        command = "sh"
-        args = ["/local/backup-script.sh"]
-      }
-
-      template {
-        data = <<EOH
-#!/bin/sh
-pg_dump -h [[ index .Tags "pg-backup-service" ]] -U $POSTGRES_USER -d $POSTGRES_DB | gzip > /backup/backup-$(date +%Y%m%d-%H%M%S).sql.gz
-EOH
-        destination = "local/backup-script.sh"
-        perms = "0755"
-      }
-
-      env {
-        POSTGRES_USER = "app"
-        POSTGRES_PASSWORD = "password"
-        POSTGRES_DB = "myapp"
-      }
-    }
-  }
-}
-```
-
-### ACL Template
-
-The ACL template defines the permissions for the secondary job. Here's a simple example:
-
-```hcl
-namespace "[[ .Namespace ]]" {
-  policy = "read"
-  
-  # Access to the specific job
-  job "[[ .JobID ]]" {
-    policy = "write"
-  }
-}
-
-# Read access to services for service discovery
-service {
-  policy = "read"
-}
-```
-
-## Example: PostgreSQL Backup System
-
-Here's a complete example of a PostgreSQL deployment with automated backups:
-
-### Primary Job: PostgreSQL Service
-
-```hcl
-job "postgres" {
-  datacenters = ["dc1"]
-  type = "service"
-
-  meta {
-    damon-enable = "true"
-    backup-cron = "0 3 * * *"  # Daily backup at 3 AM
-    backup-service = "postgres-db"
-    backup-vars = "postgres-backup-vars"
-  }
-
-  group "db" {
-    count = 1
-
-    network {
-      port "db" {
-        to = 5432
-      }
-    }
-
-    service {
-      name = "postgres-db"
-      port = "db"
-      
-      check {
-        type     = "tcp"
-        interval = "10s"
-        timeout  = "2s"
-      }
-    }
-
-    task "postgres" {
-      driver = "docker"
-      
-      config {
-        image = "postgres:14"
-        ports = ["db"]
-        volumes = [
-          "/data/postgres:/var/lib/postgresql/data",
-          "/data/backups:/backups"
-        ]
-      }
-      
-      env {
-        POSTGRES_USER = "app"
-        POSTGRES_PASSWORD = "password"
-        POSTGRES_DB = "myapp"
-      }
-    }
-  }
-}
-```
-
-### Nomad Variables
-
-You can use either dedicated variables for backups or reference the primary job's variables:
-
-```bash
-# Option 1: Create dedicated variables
-nomad var put postgres-backup-vars POSTGRES_USER=app POSTGRES_PASSWORD=password POSTGRES_DB=myapp S3_BUCKET=my-backups
-
-# Option 2: Use the original job's variables (referenced by backup-vars = "nomad/jobs/postgres" in the job meta)
-# No additional action needed as the job template will access the primary job's variables
-```
-
-### Secondary Job Template
-
-Create a template for PostgreSQL backups (saved as `templates/postgresql-backup/job.hcl`):
+Here's a simplified backup job template:
 
 ```hcl
 job "[[ .JobID ]]" {
@@ -295,15 +173,12 @@ job "[[ .JobID ]]" {
         image = "postgres:14"
         command = "sh"
         args = ["/local/backup-script.sh"]
-        volumes = [
-          "/data/backups:/backups"
-        ]
       }
 
       # Template for database credentials
       template {
         data = <<EOH
-{{ with nomadService "[[ index .Tags "backup-service" ]]" "provider=nomad" }}
+{{ with nomadService "[[ index .Tags "backup-service" ]]" }}
 {{ range . }}
 DB_HOST={{ .Address }}
 DB_PORT={{ .Port }}
@@ -314,7 +189,6 @@ DB_PORT={{ .Port }}
 POSTGRES_DB={{ .POSTGRES_DB }}
 POSTGRES_USER={{ .POSTGRES_USER }}
 PGPASSWORD={{ .POSTGRES_PASSWORD }}
-S3_BUCKET={{ .S3_BUCKET }}
 {{ end }}
 EOH
         destination = "secrets/db-credentials.env"
@@ -325,20 +199,7 @@ EOH
       template {
         data = <<EOH
 #!/bin/sh
-set -e
-
-echo "Starting PostgreSQL backup at $(date)"
-
-# Generate backup filename with timestamp
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-BACKUP_FILE="backup-${TIMESTAMP}.sql.gz"
-
-echo "Backing up database $POSTGRES_DB from $DB_HOST:$DB_PORT"
-
-# Create the backup
-pg_dump -h $DB_HOST -p $DB_PORT -U $POSTGRES_USER -d $POSTGRES_DB | gzip > /backups/$BACKUP_FILE
-
-echo "Backup completed successfully at $(date)"
+pg_dump -h $DB_HOST -p $DB_PORT -U $POSTGRES_USER -d $POSTGRES_DB | gzip > /backup/backup-$(date +%Y%m%d-%H%M%S).sql.gz
 EOH
         destination = "local/backup-script.sh"
         perms = "0755"
@@ -348,20 +209,15 @@ EOH
 }
 ```
 
-### ACL Template
+#### ACL Template Example
 
-Create an ACL template (saved as `templates/postgresql-backup/acl.hcl`):
+The ACL template defines the permissions for the secondary job:
 
 ```hcl
 namespace "[[ .Namespace ]]" {
   policy = "read"
   
-  # Write access to the specific job
-  job "[[ .JobID ]]" {
-    policy = "write"
-  }
-  
-  # Read access to variables
+  # Access to variables
   variables {
     path "[[ index .Tags "backup-vars" ]]" {
       capabilities = ["read"]
@@ -370,6 +226,154 @@ namespace "[[ .Namespace ]]" {
 }
 
 # Read access to services for service discovery
+service {
+  policy = "read"
+}
+```
+
+### Advanced Template Features
+
+The template system supports more advanced features like:
+
+- Conditionals: `[[if condition]]...[[end]]`
+- Loops: `[[range items]]...[[end]]`
+- Variable access: `index .Tags "key-name"`
+- Using primary job properties with `add_payload = true`:
+
+```hcl
+[[if and .Payload .Payload.job]]
+# Use job priority from original job if available
+[[if .Payload.job.Priority]]
+priority = [[ .Payload.job.Priority ]]
+[[end]]
+
+# Copy constraints from original job
+[[if .Payload.job.Constraints]]
+[[range $idx, $constraint := .Payload.job.Constraints]]
+constraint {
+  attribute = "[[ $constraint.LTarget ]]"
+  operator  = "[[ $constraint.Operand ]]"
+  value     = "[[ $constraint.RTarget ]]"
+}
+[[end]]
+[[end]]
+[[end]]
+```
+
+## Practical Examples
+
+### Database Backup System
+
+Here's a complete example of a PostgreSQL deployment with automated backups:
+
+#### 1. Configure the Nomad provider
+
+```toml
+[provider.pg_backup]
+type = "nomad"
+tags = ["backup-cron", "backup-service", "backup-vars"]
+job_template = "templates/postgresql-backup/job.hcl"
+acl_template = "templates/postgresql-backup/acl.hcl"
+namespace = "*"
+deregister_job = true
+```
+
+#### 2. Create Nomad variables for backup credentials
+
+```bash
+nomad var put postgres-backup-vars \
+  POSTGRES_USER=app \
+  POSTGRES_PASSWORD=secret \
+  POSTGRES_DB=myapp \
+  S3_BUCKET=my-backups
+```
+
+#### 3. Deploy a PostgreSQL job with the appropriate meta tags
+
+```hcl
+job "postgres" {
+  datacenters = ["dc1"]
+  type = "service"
+
+  meta {
+    damon-enable = "true"
+    backup-cron = "0 3 * * *"  # Daily backup at 3 AM
+    backup-service = "postgres-db"
+    backup-vars = "postgres-backup-vars"
+  }
+
+  # Rest of the PostgreSQL job definition...
+}
+```
+
+#### 4. Damon automatically creates a backup job
+
+The provider will:
+1. Detect the PostgreSQL job registration
+2. Render the backup job template with the provided meta tags
+3. Create an appropriate ACL policy for the backup job
+4. Register the backup job in Nomad
+
+#### 5. Automatic cleanup when the database is removed
+
+If `deregister_job = true` is set and the PostgreSQL job is deregistered, Damon will automatically:
+1. Detect the deregistration event
+2. Delete the backup job from Nomad
+3. Remove the associated ACL policy
+
+### Monitoring Job Example
+
+You could also create a provider that automatically deploys monitoring jobs:
+
+```toml
+[provider.monitoring]
+type = "nomad"
+tags = ["monitoring-scrape-interval", "monitoring-port", "monitoring-path"]
+job_template = "templates/prometheus-exporter/job.hcl"
+acl_template = "templates/prometheus-exporter/acl.hcl"
+namespace = "*"
+deregister_job = true
+```
+
+Then add monitoring meta tags to your applications:
+
+```hcl
+meta {
+  damon-enable = "true"
+  monitoring-scrape-interval = "15s"
+  monitoring-port = "8080"
+  monitoring-path = "/metrics"
+}
+```
+
+## ACL Policy Best Practices
+
+When creating ACL templates for secondary jobs, follow these principles:
+
+- Grant only the permissions needed for the specific job
+- Use namespace restrictions to isolate jobs
+- Limit variable access to only what's required
+
+Example of a secure ACL template:
+
+```hcl
+namespace "[[ .Namespace ]]" {
+  policy = "read"
+  
+  # Restrict to specific job only
+  job "[[ .JobID ]]" {
+    policy = "write"
+  }
+  
+  # Limit variable access
+  variables {
+    path "[[ index .Tags "backup-vars" ]]" {
+      capabilities = ["read"]
+    }
+  }
+}
+
+# Minimal service access for discovery
 service {
   policy = "read"
 }

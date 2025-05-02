@@ -7,6 +7,7 @@ The DNS Provider creates a lightweight DNS server that automatically registers N
 - **Automatic Service Registration**: Monitors Nomad service registration events and creates DNS records
 - **DNS Query Support**: Responds to A, SRV, and NS queries for registered services
 - **Service Filtering**: Ability to filter services by tags
+- **Namespace and Datacenter Awareness**: Query services across namespaces and datacenters
 - **Periodic Refresh**: Automatically syncs with Nomad services to maintain consistency
 
 ## How It Works
@@ -49,6 +50,19 @@ listen_addr = ":5354"
 tags = ["external"]
 ```
 
+## DNS Query Formats
+
+The DNS provider supports multiple query formats for different use cases:
+
+| Query Format | Example | Description |
+|--------------|---------|-------------|
+| `servicename` | `postgres-db` | Basic A record lookup, returns IP address |
+| `servicename.namespace` | `postgres-db.production` | Service in specific namespace |
+| `servicename.namespace.datacenter.service` | `postgres-db.production.dc1.service` | Fully qualified service name |
+| `_servicename._tcp.service` | `_postgres-db._tcp.service` | SRV record with port information |
+
+All query formats are case-insensitive.
+
 ## Usage
 
 ### Service Registration in Nomad
@@ -73,16 +87,18 @@ job "web-app" {
 }
 ```
 
-### DNS Query Format
-
-The DNS provider responds to the following query types:
+### Example DNS Queries
 
 #### A Record Query
 
 For direct IP address lookups:
 
 ```bash
+# Basic service lookup
 dig @localhost -p 5353 webapp
+
+# Service in specific namespace
+dig @localhost -p 5353 webapp.default
 ```
 
 Response:
@@ -108,9 +124,10 @@ _webapp._tcp.service. 30 IN SRV 10 10 8080 webapp.default.dc1.service.
 webapp.default.dc1.service. 30 IN A 10.0.0.123
 ```
 
-The SRV record format follows the pattern:
+The SRV record includes:
 - Target hostname: `<service-name>.<namespace>.svc.<datacenter>.`
-- Contains both the port and target hostname
+- Port information from the Nomad service registration
+- Priority and weight values (useful for load balancing)
 
 ### Using with Applications
 
@@ -272,6 +289,24 @@ With this setup and the DNS provider configured:
 1. The frontend service will be accessible via DNS as `frontend.service`
 2. The API service will be accessible via DNS as `api.service`
 3. The frontend's Nginx configuration will resolve the API service using Damon's DNS server
+
+## Advanced Features
+
+### Multi-Instance Services
+
+When multiple instances of a service are registered with the same name, the DNS provider will return all IP addresses in response to A record queries. This enables simple round-robin load balancing at the DNS level.
+
+### Namespace and Datacenter Spanning
+
+The DNS provider can discover services across:
+- Multiple namespaces if configured with `namespace = "*"`
+- Multiple datacenters if your Nomad cluster spans datacenters
+
+This allows for sophisticated service discovery patterns across your infrastructure.
+
+### Health Check Integration
+
+The DNS provider only registers services that have passed their health checks, ensuring that your applications only discover healthy service instances.
 
 ## Troubleshooting
 
