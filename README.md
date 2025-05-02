@@ -23,6 +23,7 @@ Damon comes with the following built-in providers:
 
 - [DNS Provider](./provider/dns/README.md) - Creates a DNS server for service discovery
 - [Nomad Provider](./provider/nomad/README.md) - Automatically creates secondary jobs based on primary job metadata
+- [Shell Provider](./provider/shell/README.md) - Execute shell scripts as Nomad jobs based on user-specified Nomad events
 
 ### Extending Damon
 
